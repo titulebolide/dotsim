@@ -107,6 +107,7 @@ class Body:
         for d in self.dots:
             d.update_position(dt)
 
+
 # double pendulum
 # d1 = Dot(0,0)
 # d2 = Dot(1,0)
@@ -116,7 +117,7 @@ class Body:
 # b = Body([c1, c2])
 
 # rigid triangle
-def rigid_triangle():
+def rigid_triangle(damp, stiff):
     d1 = Dot(0,0)
     d2 = Dot(1,0)
     d3 = Dot(-1,1)
@@ -127,7 +128,7 @@ def rigid_triangle():
     return b, [d1, d2, d3]
 
 # pendulum
-def pendulum(n_segments, seg_length):
+def pendulum(n_segments, seg_length, damp, stiff):
     x, y = 0,0
     alpha = 0.1
     dots = []
@@ -139,7 +140,7 @@ def pendulum(n_segments, seg_length):
 
     conn = []
     for i in range(n_segments):
-        conn.append(Connection(dots[i], dots[i+1], seg_length, damping=damp, stiffness=stiff))
+        conn.append(Connection(dots[i], dots[i+1], damping=damp, stiffness=stiff))
 
     b = Body(conn)
     return b, dots
@@ -184,13 +185,17 @@ def test_damp_stiff():
     plt.plot(damps, precisions_tri)
     plt.show()
 
+
+b, dots = pendulum(3, 1, 0.5, 900)
+
+
 def update(i):
     for _ in range(30):
         b.update(0.001)
-        d1.vx = 0
-        d1.xy = 0
-        d1.x = 0
-        d1.y = 0
+        dots[0].vx = 0
+        dots[0].xy = 0
+        dots[0].x = 0
+        dots[0].y = 0
     plt.clf()
     plt.xlim((-7, 7))
     plt.ylim((-7, 2))
