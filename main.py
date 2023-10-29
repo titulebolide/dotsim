@@ -31,17 +31,36 @@ class Dot:
         self.vy += self._fy / self._mass * dt
         self.x += self.vx * dt
         self.y += self.vy * dt
+    
+    def plot(self):
+        plt.plot([self.x], [self.y], "o", color="orange")
 
 
-class Connection:
-    def __init__(self, d1, d2, length=None, stiffness = 500, damping = 0.5, lpf_alpha = 0.3):
+class AbstractConstraint:
+    def __init__(self):
+        pass
+
+    def update_self(self, dt):
+        pass
+
+    def update_dots_force(self, dt):
+        pass
+
+    def update_dots_pos(self, dt):
+        pass
+
+    def plot(self):
+        pass
+
+
+class FixedDistance(AbstractConstraint):
+    def __init__(self, d1, d2, length=None, stiffness = 900, damping = 0.5, lpf_alpha = 0.3):
         """
         if lenght is unset, the length will be set to the intial distance beween points 
         """
+        super().__init__()
         self.d1 = d1
         self.d2 = d2
-        self.d1._connections.append((self, d2))
-        self.d2._connections.append((self, d1))
         self._rest_length = length
         if self._rest_length is None:
             self._rest_length = distance_dots(self.d1, self.d2)
@@ -71,39 +90,53 @@ class Connection:
         self.tension = previous_tension*(self._lpf_alpha) + self.tension*(1-self._lpf_alpha)
 
         # stablity checks
-        #print(abs(self.length - self._rest_length), abs((self.length - previous_length)/dt)) 
         self.precision = self.length - self._rest_length
         if abs(self.length - self._rest_length) > 1e-2 and abs((self.length - previous_length)/dt) > 1e-2:
             self.healthy = False
         else:
             self.healthy = True
 
-    def update_dots(self, dt):
+    def update_dots_force(self, dt):
         # update dot forces
-        fx += (self.d1.x - self.d2.x) / self.length * self.tension
-        fy += (self.d1.x - self.d2.y) / self.length * self.tension
+        fx = (self.d2.x - self.d1.x) / self.length * self.tension
+        fy = (self.d2.y - self.d1.y) / self.length * self.tension
         self.d1.add_force(fx,fy)
+        self.d2.add_force(-fx,-fy)
 
-class Gravity:
+    def plot(self):
+        plt.plot([self.d1.x, self.d2.x], [self.d1.y, self.d2.y], color="blue")
+
+
+class Gravity(AbstractConstraint):
     def __init__(self, dots):
+        super().__init__()
         self.dots = dots
 
-    def update_self(self, dt):
-        pass
-
-    def update_dots(self, dt):
+    def update_dots_force(self, dt):
         for d in self.dots:
             d.add_force(0, - 9.81 * d._mass)
 
+
+class FixedDot(AbstractConstraint):
+    def __init__(self, d):
+        super().__init__()
+        self.dot = d
+        self.x0 = d.x
+        self.y0 = d.x
+
+    def update_dots_pos(self, dt):
+        self.dot.x = self.x0
+        self.dot.y = self.y0
+        self.dot.vx = 0
+        self.dot.vy = 0
+
+
 class Body:
-    def __init__(self, connections):
-        self._connections = connections
-        self.dots = set()
+    def __init__(self, dots, constraints):
+        self.constraints = constraints
+        self.dots = dots
         self.healthy = False
         self.mean_precision = 0
-        for c in self._connections:
-            self.dots.add(c.d1)
-            self.dots.add(c.d2)
 
     def update(self, dt):
         healthy = True
@@ -111,12 +144,14 @@ class Body:
         wp = 0
         for d in self.dots:
             d.clear_force()
-        for c in self._connections:
+        for c in self.constraints:
             c.update_self(dt)
-        for c in self._connections:
-            c.update_dots(dt)
+        for c in self.constraints:
+            c.update_dots_force(dt)
         for d in self.dots:
-            d.update_position()
+            d.update_position(dt)
+        for c in self.constraints:
+            c.update_dots_pos(dt)
         #     if not c.healthy:
         #         healthy = False
         #     mean_precision += c.precision
@@ -124,33 +159,8 @@ class Body:
         #         wp = c.precision
         # self.mean_precision = wp# mean_precision/len(self._connections)
         # self.healthy = healthy
-        # for d in self.dots:
-        #     d.update_force(dt)
-        # for d in self.dots:
-        #     d.update_position(dt)
 
-
-# double pendulum
-# d1 = Dot(0,0)
-# d2 = Dot(1,0)
-# d3 = Dot(2,1)
-# c1 = Connection(d1, d2, 1)
-# c2 = Connection(d2, d3, 1)
-# b = Body([c1, c2])
-
-# rigid triangle
-def rigid_triangle(damp, stiff):
-    d1 = Dot(0,0)
-    d2 = Dot(1,0)
-    d3 = Dot(-1,1)
-    c1 = Connection(d1, d2, 1, damping=damp, stiffness=stiff)
-    c2 = Connection(d2, d3, 1, damping=damp, stiffness=stiff)
-    c3 = Connection(d3, d1, 1, damping=damp, stiffness=stiff)
-    b = Body([c1, c2, c3])
-    return b, [d1, d2, d3]
-
-# pendulum
-def pendulum(n_segments, seg_length, damp, stiff):
+def pendulum(n_segments, seg_length):
     x, y = 0,0
     alpha = 0.1
     dots = []
@@ -160,72 +170,24 @@ def pendulum(n_segments, seg_length, damp, stiff):
         y += np.sin(alpha)*seg_length
         alpha += 0.1*seg_length
 
-    conn = []
+    constraints = [Gravity(dots), FixedDot(dots[0])]
     for i in range(n_segments):
-        conn.append(Connection(dots[i], dots[i+1], damping=damp, stiffness=stiff))
+        constraints.append(FixedDistance(dots[i], dots[i+1]))
+    return Body(dots, constraints)
 
-    b = Body(conn)
-    return b, dots
-
-def test_damp_stiff():
-    damps = np.linspace(0.05, 0.9, 20)
-    stiffnesses = np.linspace(200, 4000, 20)
-    precisions_pend = []
-    precisions_tri = []
-    #damp = 0.5
-    stiff = 900
-    for damp in damps:
-    #for stiff in stiffnesses: 
-        print(damp, stiff)
-
-        b, dots = pendulum(30, 0.1)
-        mp = 0
-        for _ in range(30*150):
-            b.update(0.001)
-            dots[0].vx = 0
-            dots[0].xy = 0
-            dots[0].x = 0
-            dots[0].y = 0
-            if b.mean_precision > mp:
-                mp = b.mean_precision
-        precisions_pend.append(mp)
-
-        # b, dots = rigid_triangle()
-        # mp = 0
-        # for nit in range(30*150):
-        #     b.update(0.001)
-        #     dots[0].vx = 0
-        #     dots[0].xy = 0
-        #     dots[0].x = 0
-        #     dots[0].y = 0
-        #     if b.mean_precision < 1e-4:
-        #         break
-        # precisions_tri.append(nit*0.001)
-        
-
-    plt.plot(damps, precisions_pend)
-    plt.plot(damps, precisions_tri)
-    plt.show()
-
-
-b, dots = pendulum(3, 1, 0.5, 900)
-
+b = pendulum(3, 1)
 
 def update(i):
-    for _ in range(30):
+    for _ in range(50):
         b.update(0.001)
-        dots[0].vx = 0
-        dots[0].xy = 0
-        dots[0].x = 0
-        dots[0].y = 0
     plt.clf()
     plt.xlim((-7, 7))
     plt.ylim((-7, 2))
     plt.gca().set_aspect('equal')
-    for c in b._connections:
-        plt.plot([c.d1.x, c.d2.x], [c.d1.y, c.d2.y], color="blue")
-        plt.plot([c.d1.x], [c.d1.y], "o", color="orange")
-        plt.plot([c.d2.x], [c.d2.y], "o", color="orange")
+    for c in b.constraints:
+        c.plot()
+    for d in b.dots:
+        d.plot()
 
 fig = plt.figure()
 ani = animation.FuncAnimation(fig=fig, func=update, interval=10)
