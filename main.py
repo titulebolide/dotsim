@@ -10,7 +10,6 @@ def distance_dots(d1,d2):
 
 class Dot:
     def __init__(self, x0, y0):
-        self._connections = [] # (connection, other dot)
         self.x = x0
         self.y = y0
         self.vx = 0
@@ -19,15 +18,14 @@ class Dot:
         self._fx = 0
         self._fy = 0
 
-    def update_force(self, dt):
-        # connections must be updated before
+    def clear_force(self):
         self._fx = 0
         self._fy = 0
-        for c, d in self._connections:
-            self._fx += (d.x - self.x) / c.length * c.tension
-            self._fy += (d.y - self.y) / c.length * c.tension
-        self._fy += - 9.81 * self._mass
-    
+
+    def add_force(self, fx, fy):
+        self._fx += fx
+        self._fy += fy
+
     def update_position(self, dt):
         self.vx += self._fx / self._mass * dt
         self.vy += self._fy / self._mass * dt
@@ -55,7 +53,8 @@ class Connection:
         self.healthy = False
         self.precision = 0
 
-    def update(self, dt):
+    def update_self(self, dt):
+        # update of local params
         previous_length = self.length
         previous_tension = self.tension
         self.length = distance_dots(self.d1, self.d2)
@@ -68,7 +67,7 @@ class Connection:
         # friction term
         self.tension += saturation(self.length - previous_length, self._rest_length*1000/dt) * self._damping / dt
         
-        # low pass filtering
+        # low pass filter
         self.tension = previous_tension*(self._lpf_alpha) + self.tension*(1-self._lpf_alpha)
 
         # stablity checks
@@ -78,6 +77,23 @@ class Connection:
             self.healthy = False
         else:
             self.healthy = True
+
+    def update_dots(self, dt):
+        # update dot forces
+        fx += (self.d1.x - self.d2.x) / self.length * self.tension
+        fy += (self.d1.x - self.d2.y) / self.length * self.tension
+        self.d1.add_force(fx,fy)
+
+class Gravity:
+    def __init__(self, dots):
+        self.dots = dots
+
+    def update_self(self, dt):
+        pass
+
+    def update_dots(self, dt):
+        for d in self.dots:
+            d.add_force(0, - 9.81 * d._mass)
 
 class Body:
     def __init__(self, connections):
@@ -93,19 +109,25 @@ class Body:
         healthy = True
         mean_precision = 0
         wp = 0
+        for d in self.dots:
+            d.clear_force()
         for c in self._connections:
-            c.update(dt)
-            if not c.healthy:
-                healthy = False
-            mean_precision += c.precision
-            if c.precision > wp:
-                wp = c.precision
-        self.mean_precision = wp# mean_precision/len(self._connections)
-        self.healthy = healthy
+            c.update_self(dt)
+        for c in self._connections:
+            c.update_dots(dt)
         for d in self.dots:
-            d.update_force(dt)
-        for d in self.dots:
-            d.update_position(dt)
+            d.update_position()
+        #     if not c.healthy:
+        #         healthy = False
+        #     mean_precision += c.precision
+        #     if c.precision > wp:
+        #         wp = c.precision
+        # self.mean_precision = wp# mean_precision/len(self._connections)
+        # self.healthy = healthy
+        # for d in self.dots:
+        #     d.update_force(dt)
+        # for d in self.dots:
+        #     d.update_position(dt)
 
 
 # double pendulum
