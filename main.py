@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.animation as animation
+import matplotlib as mpl
+cmap = mpl.colormaps['jet']
+
 
 def saturation(val, sat_val):
     return max(min(val, sat_val), -sat_val)
@@ -9,12 +12,12 @@ def distance_dots(d1,d2):
     return np.sqrt((d1.x - d2.x)**2 + (d1.y - d2.y)**2)
 
 class Dot:
-    def __init__(self, x0, y0):
+    def __init__(self, x0, y0, mass=0.001):
         self.x = x0
         self.y = y0
         self.vx = 0
         self.vy = 0
-        self._mass = 0.001
+        self._mass = mass
         self._fx = 0
         self._fy = 0
 
@@ -53,7 +56,7 @@ class AbstractConstraint:
         pass
 
 
-class FixedDistance(AbstractConstraint):
+class ElasticJoint(AbstractConstraint):
     def __init__(self, d1, d2, length=None, stiffness = 900, damping = 0.5, lpf_alpha = 0.3):
         """
         if lenght is unset, the length will be set to the intial distance beween points 
@@ -104,7 +107,7 @@ class FixedDistance(AbstractConstraint):
         self.d2.add_force(-fx,-fy)
 
     def plot(self):
-        plt.plot([self.d1.x, self.d2.x], [self.d1.y, self.d2.y], color="blue")
+        plt.plot([self.d1.x, self.d2.x], [self.d1.y, self.d2.y], color=cmap(abs(self.tension)))
 
 
 class Gravity(AbstractConstraint):
@@ -118,11 +121,11 @@ class Gravity(AbstractConstraint):
 
 
 class FixedDot(AbstractConstraint):
-    def __init__(self, d):
+    def __init__(self, dot):
         super().__init__()
-        self.dot = d
-        self.x0 = d.x
-        self.y0 = d.x
+        self.dot = dot
+        self.x0 = dot.x
+        self.y0 = dot.x
 
     def update_dots_pos(self, dt):
         self.dot.x = self.x0
@@ -130,6 +133,51 @@ class FixedDot(AbstractConstraint):
         self.dot.vx = 0
         self.dot.vy = 0
 
+class Floor(AbstractConstraint):
+    def __init__(self, y, dots):
+        super().__init__()
+        self.dots = dots
+        self.y = y
+
+    def update_dots_pos(self, dt):
+        for d in self.dots:
+            if d.y < self.y:
+                d.y = self.y
+                if d.vy < 0:
+                    d.vy *= -1
+
+    def plot(self):
+        plt.plot([-15, 15], [self.y, self.y], color="black")
+
+
+class Muscle(AbstractConstraint):
+    def __init__(self, base_d, d1, d2):
+        """
+        Idea : use instead other ElasticJoint Between points
+        """
+        super().__init__()
+        self.target_angle = 120/180*3.1415
+        self.base_d = base_d
+        self.d1 = d1
+        self.d2 = d2
+        self.stiffness = 4
+        self.damping = 0.5
+        self.angle = None
+
+    def update_dots_force(self, dt):
+        previous_angle = self.angle
+        self.angle = np.arctan((self.d1.y - self.base_d.y)/(self.d1.x - self.base_d.x)) - np.arctan((self.d2.y - self.base_d.y)/(self.d2.x - self.base_d.x))
+        if previous_angle is None:
+            previous_angle = self.angle
+        moment = (self.angle - self.target_angle) * self.stiffness
+        moment += (self.angle - previous_angle) * self.damping / dt
+        # don't divide by the lenght, it is the lever arm
+        d1_x = (self.d1.x - self.base_d.x)
+        d1_y = (self.d1.y - self.base_d.y)
+        d2_x = (self.d2.x - self.base_d.x)
+        d2_y = (self.d2.y - self.base_d.y)
+        self.d1.add_force(moment*d1_y, - moment*d1_x)
+        self.d2.add_force(- moment*d2_y, moment*d2_x)
 
 class Body:
     def __init__(self, dots, constraints):
@@ -172,17 +220,63 @@ def pendulum(n_segments, seg_length):
 
     constraints = [Gravity(dots), FixedDot(dots[0])]
     for i in range(n_segments):
-        constraints.append(FixedDistance(dots[i], dots[i+1]))
+        constraints.append(ElasticJoint(dots[i], dots[i+1]))
     return Body(dots, constraints)
 
-b = pendulum(3, 1)
+
+def soft_body_and_floor():
+    stiffness = 20
+    damping = 0.5
+    mass = 0.05
+    d = [Dot(-1,0,mass), Dot(0,-1,mass), Dot(1,0,mass), Dot(0,1,mass), Dot(2,1,mass), Dot(1,2,mass)]
+    c = [
+        ElasticJoint(d[0], d[1], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[0], d[2], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[0], d[3], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[1], d[2], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[1], d[3], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[2], d[3], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[4], d[5], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[3], d[5], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[3], d[4], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[2], d[5], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[2], d[4], stiffness=stiffness, damping=damping),
+        Gravity(d),
+        Floor(-4, d),
+    ]
+    return Body(d, c)
+
+def test_muscle():
+    stiffness = 20
+    damping = 0.5
+    mass = 0.05
+    d = [Dot(0,0,mass), Dot(1,0,mass), Dot(0,1,mass)]
+    c = [
+        ElasticJoint(d[0], d[1], stiffness=stiffness, damping=damping),
+        ElasticJoint(d[2], d[1], stiffness=stiffness, damping=damping),
+        Floor(-1, d),
+        #Gravity(d),
+        Muscle(d[1], d[0], d[2])
+    ]
+    return Body(d,c)
+
+#b = pendulum(3, 1)
+#b = soft_body_and_floor()
+b = test_muscle()
+
 
 def update(i):
+    if i%25 == 0:
+        if b.constraints[3].target_angle > 90/180*3.1415:
+            b.constraints[3].target_angle = 10/180*3.1415
+        else:
+            b.constraints[3].target_angle = 120/180*3.1415
+
     for _ in range(50):
         b.update(0.001)
     plt.clf()
     plt.xlim((-7, 7))
-    plt.ylim((-7, 2))
+    plt.ylim((-7, 7))
     plt.gca().set_aspect('equal')
     for c in b.constraints:
         c.plot()
