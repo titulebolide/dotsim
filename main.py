@@ -11,6 +11,9 @@ def saturation(val, sat_val):
 def distance_dots(d1,d2):
     return np.sqrt((d1.x - d2.x)**2 + (d1.y - d2.y)**2)
 
+def angle_diff(a1, a2):
+    return (a1 - a2 + np.pi) % (2*np.pi) - np.pi
+
 class Dot:
     def __init__(self, x0, y0, mass=0.001):
         self.x = x0
@@ -166,18 +169,23 @@ class Muscle(AbstractConstraint):
 
     def update_dots_force(self, dt):
         previous_angle = self.angle
-        self.angle = np.arctan((self.d1.y - self.base_d.y)/(self.d1.x - self.base_d.x)) - np.arctan((self.d2.y - self.base_d.y)/(self.d2.x - self.base_d.x))
-        if previous_angle is None:
-            previous_angle = self.angle
-        moment = (self.angle - self.target_angle) * self.stiffness
-        moment += (self.angle - previous_angle) * self.damping / dt
-        # don't divide by the lenght, it is the lever arm
         d1_x = (self.d1.x - self.base_d.x)
         d1_y = (self.d1.y - self.base_d.y)
         d2_x = (self.d2.x - self.base_d.x)
         d2_y = (self.d2.y - self.base_d.y)
-        self.d1.add_force(moment*d1_y, - moment*d1_x)
-        self.d2.add_force(- moment*d2_y, moment*d2_x)
+        self.angle = np.arctan2(d1_y, d1_x) - np.arctan2(d2_y, d2_x)
+        if previous_angle is None:
+            previous_angle = self.angle
+        moment = angle_diff(self.angle, self.target_angle) * self.stiffness
+        moment += angle_diff(self.angle, previous_angle) * self.damping / dt
+        d1_l_2 = d1_x**2 + d1_y**2
+        d2_l_2 = d2_x**2 + d2_y**2
+        self.d1.add_force(moment*d1_y/d1_l_2, - moment*d1_x/d1_l_2)
+        self.d2.add_force(- moment*d2_y/d2_l_2, moment*d2_x/d2_l_2)
+        self.base_d.add_force(-moment*d1_y/d1_l_2, moment*d1_x/d1_l_2)
+        self.base_d.add_force(moment*d2_y/d2_l_2, -moment*d2_x/d2_l_2)
+
+
 
 class Body:
     def __init__(self, dots, constraints):
