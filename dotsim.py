@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.animation as animation
 import matplotlib as mpl
 cmap = mpl.colormaps['jet']
 
@@ -128,7 +127,7 @@ class FixedDot(AbstractConstraint):
         super().__init__()
         self.dot = dot
         self.x0 = dot.x
-        self.y0 = dot.x
+        self.y0 = dot.y
 
     def update_dots_pos(self, dt):
         self.dot.x = self.x0
@@ -256,8 +255,10 @@ class Body:
         self.dots = dots
         self.healthy = False
         self.mean_precision = 0
+        self.t = 0
 
     def update(self, dt):
+        self.t += dt
         healthy = True
         mean_precision = 0
         wp = 0
@@ -278,113 +279,3 @@ class Body:
         #         wp = c.precision
         # self.mean_precision = wp# mean_precision/len(self._connections)
         # self.healthy = healthy
-
-def pendulum(n_segments, seg_length):
-    x, y = 0,0
-    alpha = 0.1
-    dots = []
-    for i in range(n_segments + 1):
-        dots.append(Dot(x,y))
-        x += np.cos(alpha)*seg_length
-        y += np.sin(alpha)*seg_length
-        alpha += 0.1*seg_length
-
-    constraints = [Gravity(dots), FixedDot(dots[0])]
-    for i in range(n_segments):
-        constraints.append(ElasticJoint(dots[i], dots[i+1]))
-    return Body(dots, constraints)
-
-
-def soft_body_and_floor():
-    stiffness = 20
-    damping = 0.5
-    mass = 0.05
-    d = [Dot(-1,0,mass), Dot(0,-1,mass), Dot(1,0,mass), Dot(0,1,mass), Dot(2,1,mass), Dot(1,2,mass)]
-    c = [
-        ElasticJoint(d[0], d[1], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[0], d[2], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[0], d[3], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[1], d[2], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[1], d[3], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[2], d[3], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[4], d[5], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[3], d[5], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[3], d[4], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[2], d[5], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[2], d[4], stiffness=stiffness, damping=damping),
-        Gravity(d),
-        Floor(-4, d),
-    ]
-    return Body(d, c)
-
-def test_muscle():
-    stiffness = 900
-    damping = 0.5
-    mass = 0.05
-    d = [Dot(0,0,mass), Dot(1,0,mass), Dot(0,1,mass*10)]
-    c = [
-        Muscle(d[1], d[0], d[2]),
-        ElasticJoint(d[0], d[1], stiffness=stiffness, damping=damping),
-        ElasticJoint(d[2], d[1], stiffness=stiffness, damping=damping),
-        #Floor(-0.2, d),
-        #Gravity(d),
-    ]
-    return Body(d,c)
-
-def test_fluid():
-    d = []
-    for i in range(3):
-        for j in range(3):
-            d.append(Dot(i/3, j/3, 0.05))
-    c = [
-        RepulsiveDots(d),
-        ViscousFluid(d),
-        Gravity(d),
-        Wall(d, x = -2),
-        Wall(d, x = 3, positive=False),
-        Wall(d, y = -2),
-        Wall(d, y = 3, positive=False),
-    ]
-    return Body(d,c)
-
-def test_lone_ball():
-    d = [Dot(0,0,1)]
-    c = [
-        Gravity(d),
-        # ViscousFluid(d),
-        Wall(d, x = -3),
-        Wall(d, x = 3, positive=False),
-        Wall(d, y = -3),
-        Wall(d, y = 3, positive=False),
-    ]
-    return Body(d,c)
-
-b = pendulum(3, 1)
-#b = soft_body_and_floor()
-#b = test_muscle()
-#b = test_fluid()
-# b = test_lone_ball()
-
-def update(i):
-    # if i%30 == 0:
-    #     if b.constraints[0].target_angle > 90/180*3.1415:
-    #         b.constraints[0].target_angle = 90/180*3.1415
-    #     else:
-    #         b.constraints[0].target_angle = 270/180*3.1415
-
-    for _ in range(50):
-        b.update(0.001)
-    plt.clf()
-    plt.xlim((-7, 7))
-    plt.ylim((-7, 7))
-    plt.gca().set_aspect('equal')
-    for c in b.constraints:
-        c.plot()
-    for d in b.dots:
-        d.plot()
-
-fig = plt.figure()
-ani = animation.FuncAnimation(fig=fig, func=update, interval=10)
-plt.show()
-
-
