@@ -136,22 +136,59 @@ class FixedDot(AbstractConstraint):
         self.dot.vx = 0
         self.dot.vy = 0
 
-class Floor(AbstractConstraint):
-    def __init__(self, y, dots):
+class Wall(AbstractConstraint):
+    def __init__(self, dots, x = None, y = None, positive = True, bouncyness=0.8):
+        assert not (x is None and y is None)
+        assert not (x is not None and y is not None)
         super().__init__()
         self.dots = dots
         self.y = y
+        self.x = x
+        self.bouncyness = bouncyness
+        if x is not None:
+            if positive:
+                self.update_dots_pos = self._update_dots_pos_x_pos
+            else:
+                self.update_dots_pos = self._update_dots_pos_x_neg
+        else:
+            if positive:
+                self.update_dots_pos = self._update_dots_pos_y_pos
+            else:
+                self.update_dots_pos = self._update_dots_pos_y_neg
 
-    def update_dots_pos(self, dt):
+    def _update_dots_pos_y_pos(self, dt):
         for d in self.dots:
             if d.y < self.y:
                 d.y = self.y
                 if d.vy < 0:
-                    d.vy *= -1
+                    d.vy *= -self.bouncyness
+    
+    def _update_dots_pos_y_neg(self, dt):
+        for d in self.dots:
+            if d.y > self.y:
+                d.y = self.y
+                if d.vy > 0:
+                    d.vy *= -self.bouncyness
+
+    def _update_dots_pos_x_pos(self, dt):
+        for d in self.dots:
+            if d.x < self.x:
+                d.x = self.x
+                if d.vx < 0:
+                    d.vx *= -self.bouncyness
+    
+    def _update_dots_pos_x_neg(self, dt):
+        for d in self.dots:
+            if d.x > self.x:
+                d.x = self.x
+                if d.vx > 0:
+                    d.vx *= -self.bouncyness
 
     def plot(self):
-        plt.plot([-15, 15], [self.y, self.y], color="black")
-
+        if self.y is not None:
+            plt.plot([-15, 15], [self.y, self.y], color="black")
+        else:
+            plt.plot([self.x, self.x], [-15, 15], color="black")
 
 class Muscle(AbstractConstraint):
     def __init__(self, base_d, d1, d2):
