@@ -318,30 +318,59 @@ def soft_body_and_floor():
     return Body(d, c)
 
 def test_muscle():
-    stiffness = 20
+    stiffness = 900
     damping = 0.5
     mass = 0.05
-    d = [Dot(0,0,mass), Dot(1,0,mass), Dot(0,1,mass)]
+    d = [Dot(0,0,mass), Dot(1,0,mass), Dot(0,1,mass*10)]
     c = [
+        Muscle(d[1], d[0], d[2]),
         ElasticJoint(d[0], d[1], stiffness=stiffness, damping=damping),
         ElasticJoint(d[2], d[1], stiffness=stiffness, damping=damping),
-        Floor(-1, d),
+        #Floor(-0.2, d),
         #Gravity(d),
-        Muscle(d[1], d[0], d[2])
     ]
     return Body(d,c)
 
-#b = pendulum(3, 1)
-#b = soft_body_and_floor()
-b = test_muscle()
+def test_fluid():
+    d = []
+    for i in range(3):
+        for j in range(3):
+            d.append(Dot(i/3, j/3, 0.05))
+    c = [
+        RepulsiveDots(d),
+        ViscousFluid(d),
+        Gravity(d),
+        Wall(d, x = -2),
+        Wall(d, x = 3, positive=False),
+        Wall(d, y = -2),
+        Wall(d, y = 3, positive=False),
+    ]
+    return Body(d,c)
 
+def test_lone_ball():
+    d = [Dot(0,0,1)]
+    c = [
+        Gravity(d),
+        # ViscousFluid(d),
+        Wall(d, x = -3),
+        Wall(d, x = 3, positive=False),
+        Wall(d, y = -3),
+        Wall(d, y = 3, positive=False),
+    ]
+    return Body(d,c)
+
+b = pendulum(3, 1)
+#b = soft_body_and_floor()
+#b = test_muscle()
+#b = test_fluid()
+# b = test_lone_ball()
 
 def update(i):
-    if i%25 == 0:
-        if b.constraints[3].target_angle > 90/180*3.1415:
-            b.constraints[3].target_angle = 10/180*3.1415
-        else:
-            b.constraints[3].target_angle = 120/180*3.1415
+    # if i%30 == 0:
+    #     if b.constraints[0].target_angle > 90/180*3.1415:
+    #         b.constraints[0].target_angle = 90/180*3.1415
+    #     else:
+    #         b.constraints[0].target_angle = 270/180*3.1415
 
     for _ in range(50):
         b.update(0.001)
