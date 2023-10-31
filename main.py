@@ -223,6 +223,32 @@ class Muscle(AbstractConstraint):
         self.base_d.add_force(moment*d2_y/d2_l_2, -moment*d2_x/d2_l_2)
 
 
+class RepulsiveDots(AbstractConstraint):
+    def __init__(self, dots):
+        self.dots = dots
+        self.repulsive_func = lambda r : 0.01/(0.01 + r)
+
+    def update_dots_force(self, dt):
+        for id1, d1 in enumerate(self.dots):
+            for id2, d2 in enumerate(self.dots):
+                if id1 == id2:
+                    continue
+                dist = distance_dots(d1, d2)
+                force = self.repulsive_func(dist)
+                ux = (d2.x - d1.x) / dist
+                uy = (d2.y - d1.y) / dist
+                d2.add_force(ux * force, uy * force)
+                d1.add_force(-ux * force, -uy * force)
+
+
+class ViscousFluid(AbstractConstraint):
+    def __init__(self, dots):
+        self.dots = dots
+        self.cx = 0.01
+
+    def update_dots_force(self, dt):
+        for d in self.dots:
+            d.add_force(- self.cx * d.vx, - self.cx * d.vy)
 
 class Body:
     def __init__(self, dots, constraints):
